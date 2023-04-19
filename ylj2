@@ -1,0 +1,569 @@
+附录
+1、代码
+`timescale 1ns / 1ps
+
+
+module drink_up(
+    input clk,    //时钟
+    input rst,    //复位键
+    input [0:4]key,    //按键输入
+    output [0:7]seg_cs,   //数码管位选
+    output [0:7]seg_data0,    //前四个数码管
+    output [0:7]seg_data1,    //后四个数码管
+    output [0:7]led,     //LED灯
+	 
+	 
+	output[7:0]data		//数据输出
+    );
+
+	 reg [0:2] key_out;   //按键值
+    reg [0:20] cnt_xd = 0;    //消抖计时
+    reg [0:28] cs;    //计时3s
+    reg [0:2] cnt_wz = 0;    
+    reg [0:17] cnt;
+    reg [0:25] cnt_s = 0;     //闪烁计时
+    reg [0:3] count = 0;   //用于移位的计数
+    reg [0:7] wz;   //决定哪一位数码管亮
+    reg [0:6] money = 0;   //输入的钱数
+    reg [0:6] price = 0;   //饮料价格
+    reg [0:6] zj = 3;   //总价
+    reg [0:5] sl = 1;   //饮料数量
+    reg [0:6] change = 0;  //找零数
+    reg [0:3] num = 0;    
+    reg [0:7] smg;
+    reg [7:0] cd = 0;  //传递变量
+    reg [0:7] light;   //LED灯状态
+    reg [17:0] shift_reg = 0;    //移位寄存器
+    reg [0:3] gw;   //个位
+    reg [0:3] sw;   //十位
+    reg DIR = 1'b0;   //分频计
+    reg zt = 1'b0;   //状态
+    reg shine = 1'b0;
+	 reg sum1 = 10;	 //上架饮料总数
+	 reg sum2 = 10;
+	 reg sum3 = 10;
+	 reg sum4 = 10;
+	 reg sum5 = 10;
+	 
+	 
+	 reg summ1 = 100; //库总量
+	 reg summ2 = 100;
+	 reg summ3 = 100;
+	 reg summ4 = 100;
+	 reg summ5 = 100;
+	 
+	 			reg [3:0] lfsr = 4'b0001;
+			reg random_number;
+	 
+	 
+	 reg div10;
+  parameter N=12500000;
+  reg [24:0] counter;
+	 
+	 wire[5:0]		select;	//字符选择
+	wire[2:0]		page_cur;	//当前顿
+	wire[5:0]		index_cur;	//当前衿
+	reg seg1;
+	reg seg2;
+	reg[7:0]	data1[31:0]; 
+	reg[7:0]	data2[31:0]; 
+	reg[7:0]	data3[31:0]; 
+	assign data = 	(select == 'd0) ? data1[(index_cur-'d3) + 'd16 *page_cur] : 
+				(select == 'd1) ? data2[(index_cur-'d3) + 'd16 *page_cur] : 
+				(select == 'd2) ? data3[(index_cur-'d3) + 'd16 *page_cur] : 'd0;
+    
+
+    parameter xd = 21'd2000000;    //计时_20ms
+
+    always@(posedge clk) begin    //消抖计时
+    if(key == 6'b000000)    //抖动即重新开始
+        cnt_xd <= 0;
+    else if(cnt_xd == xd)
+        cnt_xd <= xd;
+    else
+        cnt_xd <= cnt_xd + 1;
+    end
+
+    always@(posedge clk) begin
+    if(cnt_xd == 0)
+        key_out <= 0;
+    else if(cnt_xd == (xd - 21'b1))    //产生1个时间单位的按键信号
+        case(key)     //根据键入得到对应的值
+        5'b10000: key_out <= 1;
+        5'b01000: key_out <= 2;
+        5'b00100: key_out <= 3;
+        5'b00010: key_out <= 4;
+        5'b00001: key_out <= 5;
+        endcase
+    else
+        key_out <= 0;   //0表示无按键按下
+    end
+	 
+	 
+		always @(posedge clk or negedge rst) begin
+		if(!rst) begin
+	counter <= 0;
+	div10<=0;
+	end
+	else
+	begin
+	if(counter< N-1)
+	begin 
+	counter <=counter+1;
+	end 
+	else
+	begin
+	counter <= 0;
+	div10<=~div10;
+	end
+	end
+	end
+
+	reg [3:0] digit_sel = 0;
+	reg [31:0] counter_divider = 0;
+	always @(posedge div10 or negedge rst) begin
+    if (!rst) begin // 如果复位信号为高电平，计数器清零
+       
+        digit_sel <= 0;
+		  seg1<=0;
+	seg2<=0;
+        counter_divider <= 0;
+    end
+    else begin // 如果时钟上升沿到来，计数器加1
+       
+        counter_divider <= counter_divider + 1;
+	digit_sel <= digit_sel + 1; 
+      
+       if (counter_divider == 30) begin // 每 30 秒更新数字选择变量
+      counter_divider <= 0;
+		end 
+		else begin 
+		seg1<=~seg1;
+	end 		
+	if (digit_sel == 30) begin // 如果选择变量达到最大值，重置为 0
+                digit_sel <= 0; end
+		else if(digit_sel == 10) begin
+					 seg2=~seg2;  end 
+					 else begin seg2<=0;end
+					 end 
+					 end
+
+    
+    always@(posedge clk)  begin   //价格调整
+    if(key_out == 4 & sl == 1)
+        zt = ~zt;
+    else if(key_out == 5 & zt == 1)
+        begin
+        price = price + 1;
+        if(price == 6)
+            price = 1;
+        else
+            price = price;
+        zj = price;    
+        end       
+    else if(key_out == 5 & zt == 0)
+    begin
+        zj = zj + price;
+        sl = sl + 1;
+		  case(price)
+		  6'b000001: sum1 <= sum1- sl;
+		  6'b000010: sum2 <= sum2- sl;
+		  6'b000011: sum3 <= sum3- sl;
+		  6'b000100: sum4 <= sum4- sl;
+		  6'b000101: sum5 <= sum5- sl;
+		  endcase
+		  if(sum1 <=0) begin
+		  sum1 <=10; summ1=summ1-10;
+		
+		 
+		  end
+		  else if(sum2 <=0) begin
+		  sum1 <=10; summ2=summ2-10;
+		 
+		  
+		  end
+		  else if(sum3 <=0) begin
+		  sum1 <=10; summ3=summ3-10;
+		  
+		  
+		  end
+		  else if(sum4 <=0) begin
+		  sum1 <=10; summ4=summ4-10;
+		 
+		  
+		  end
+		  else if(sum5 <=0) begin
+		  sum1 <=10; summ5=summ5-10;
+		 
+		  
+		  end
+    
+					//设置总量变化//判断是否进入补货
+			
+			
+			
+			
+				
+				end
+    else if(cs == 29'd300000000)
+    begin
+        sl = 1;
+        zj = price;
+    end
+    else
+    begin
+        price = price;
+        zj = zj;
+    end
+			
+			
+    end  //选购模块
+	 
+
+    always@(posedge clk) begin
+    if(money >= zj)    //投入钱数大于价格时，禁止投币，计时3s后迎接下一个消费者
+    begin
+        if(cs == 29'd300000000)   //3s计时
+        begin           
+            money <= 0;    //钱置零
+            cs <= 0;
+        end
+        else
+            cs <= cs + 1;
+    end
+    else if(key_out == 1 & zt ==0)   //按下S0
+        money <= money + 1; //表示投入1块钱
+    else if(key_out == 2 & zt ==0)   //下面同理
+        money <= money + 5;
+    else if(key_out == 3 & zt ==0)
+        money <= money + 10;
+    else
+        money <= money;   //钱数不变
+    end
+    
+    always@(posedge clk) begin    //控制数码管的闪烁
+    if(zt == 1)
+    begin
+        if(cnt_s == 26'd50000000)   //0.5s变换
+        begin
+            cnt_s <= 0;
+            shine <= ~shine;     //暗灭转换
+        end
+        else
+            cnt_s <= cnt_s + 1;
+    end
+    else
+        cnt_s <= 0;  
+    end
+
+    always@(posedge clk) begin   //数码管扫描计时
+    if(cnt == 18'd200000)  //500Hz
+    begin
+        cnt <= 0;
+        DIR <= 1'b1;   //产生一个上升沿
+    end
+    else
+    begin
+        cnt <= cnt +1;
+        DIR <= 1'b0;
+    end   
+    end  //分频器
+
+    always@(posedge clk)begin 
+    if(money >= zj)   //当输入钱数大于3，找零
+    begin
+        light <= 8'b00000000;  //LED全亮，表示购买成功
+        change <= money - zj;
+    end  //找零模块
+    else
+    begin
+        change <= 0;    //未达到，不找零（即为0）
+        light <= 8'b01111111;    //只亮一位LED，表示饮料机正常运行
+    end
+	 
+	 if(light == 0 & counter_divider == 0)
+	 begin
+    
+	 
+	 //大
+
+begin
+	if(rst == 1'b0)
+	begin
+		 data1[0] =  8'h20;
+		 data1[1] =  8'h20;
+		 data1[2] =  8'h20;
+		 data1[3] =  8'h20;
+		 data1[4] =  8'h20;
+		 data1[5] =  8'h20;
+		 data1[6] =  8'h20;
+		 data1[7] =  8'hFF;
+		 data1[8] =  8'h20;
+		 data1[9] =  8'h20;
+		 data1[10] = 8'h20;
+		 data1[11] = 8'h20;
+		 data1[12] = 8'h20;
+		 data1[13] = 8'h20;
+		 data1[14] = 8'h20;
+		 data1[15] = 8'h00;
+		 data1[16] = 8'h80;
+		 data1[17] = 8'h80;
+		 data1[18] = 8'h40;
+		 data1[19] = 8'h20;
+		 data1[20] = 8'h10;
+		 data1[21] = 8'h0C;
+		 data1[22] = 8'h03;
+		 data1[23] = 8'h00;
+		 data1[24] = 8'h03;
+		 data1[25] = 8'h0C;
+		 data1[26] = 8'h10;
+		 data1[27] = 8'h20;
+		 data1[28] = 8'h40;
+		 data1[29] = 8'h80;
+		 data1[30] = 8'h80;
+		 data1[31] = 8'h00;
+	end
+end
+//西
+
+begin
+	if(rst == 1'b0)
+	begin
+		data2[0] =  8'h02;
+		data2[1] =  8'h02;
+		data2[2] =  8'hE2;
+		data2[3] =  8'h22;
+		data2[4] =  8'h22;
+		data2[5] =  8'hFE;
+		data2[6] =  8'h22;
+		data2[7] =  8'h22;
+		data2[8] =  8'h22;
+		data2[9] =  8'hFE;
+		data2[10] = 8'h22;
+		data2[11] = 8'h22;
+		data2[12] = 8'hE2;
+		data2[13] = 8'h02;
+		data2[14] = 8'h02;
+		data2[15] = 8'h00;
+		data2[16] = 8'h00;
+		data2[17] = 8'h00;
+		data2[18] = 8'hFF;
+		data2[19] = 8'h48;
+		data2[20] = 8'h44;
+		data2[21] = 8'h43;
+		data2[22] = 8'h40;
+		data2[23] = 8'h40;
+		data2[24] = 8'h40;
+		data2[25] = 8'h43;
+		data2[26] = 8'h44;
+		data2[27] = 8'h44;
+		data2[28] = 8'hFF;
+		data2[29] = 8'h00;
+		data2[30] = 8'h00;
+		data2[31] = 8'h00;
+	end
+end
+//瓜
+
+begin
+	if(rst == 1'b0)
+	begin
+		data3[0] =  8'h00;
+		data3[1] =  8'h00;
+		data3[2] =  8'h00;
+		data3[3] =  8'hFC;
+		data3[4] =  8'h04;
+		data3[5] =  8'h04;
+		data3[6] =  8'hFC;
+		data3[7] =  8'h04;
+		data3[8] =  8'h02;
+		data3[9] =  8'h02;
+		data3[10] = 8'hFE;
+		data3[11] = 8'h03;
+		data3[12] = 8'h02;
+		data3[13] = 8'h00;
+		data3[14] = 8'h00;
+		data3[15] = 8'h00;
+		data3[16] = 8'h80;
+		data3[17] = 8'h60;
+		data3[18] = 8'h18;
+		data3[19] = 8'h07;
+		data3[20] = 8'h00;
+		data3[21] = 8'h00;
+		data3[22] = 8'h7F;
+		data3[23] = 8'h20;
+		data3[24] = 8'h14;
+		data3[25] = 8'h08;
+		data3[26] = 8'h31;
+		data3[27] = 8'h0E;
+		data3[28] = 8'h30;
+		data3[29] = 8'h40;
+		data3[30] = 8'h80;
+		data3[31] = 8'h00;
+	end
+end
+end
+
+
+
+			
+	begin
+		if(light == 8'b0 & counter_divider == 30)
+		begin 
+		if (rst) begin
+    lfsr <= 4'b0001;
+    random_number <= 4'b0000;
+  end else begin
+    lfsr <= {lfsr[2:0], lfsr[3]^lfsr[0]};
+    random_number <= lfsr;
+  end
+end
+     if (random_number == 4'b0001)
+	  light <= 8'b00000000;
+	  else
+	  light <= 8'b11111111;
+end
+		
+	end	
+		
+    always@(posedge DIR) begin
+    if(cnt_wz == 7)
+        cnt_wz <= 0;
+    else
+        cnt_wz <= cnt_wz + 1;  //cnt_wz表示不同数码管的状态
+    end
+    
+    always@(posedge clk) begin   //根据cd的值来计算不同类型的时间
+    case(cnt_wz)
+    3'd0: cd <= zj;
+    3'd3: cd <= money;
+    3'd6: cd <= change;
+    default: cd <= cd;
+    endcase      
+    end
+
+    always@(posedge clk)   //用来控制移位
+    begin
+        if(count == 9)    //由于这里原码为8bit，故只需要移位10位就可以得到结果
+            count <= 0;
+        else
+            count <= count + 1;                 
+    end
+
+    always@(posedge clk) begin   //下面程序完成二进制码到BCD码的变换
+    if(count == 0)
+        shift_reg={10'b0000000000,cd};
+    else if (count<=8) 
+    begin
+        if(shift_reg[11:8] >= 5)   //大于等于5就加3，下面同理
+        begin
+            if(shift_reg[15:12] >= 5)
+                begin
+                shift_reg[15:12]=shift_reg[15:12]+2'b11;    
+                shift_reg[11:8]=shift_reg[11:8]+2'b11;
+                shift_reg = shift_reg<<1;
+                end 
+             else
+             begin
+                shift_reg[15:12]=shift_reg[15:12];
+                shift_reg[11:8]=shift_reg[11:8]+2'b11;
+                shift_reg=shift_reg<<1;
+             end
+         end
+         else
+         begin
+              if(shift_reg[15:12] >= 5)
+                  begin
+                  shift_reg[15:12]=shift_reg[15:12]+2'b11;
+                  shift_reg[11:8]=shift_reg[11:8];
+                  shift_reg=shift_reg<<1;
+                  end
+              else
+                begin
+                 shift_reg[15:12]=shift_reg[15:12];
+                 shift_reg[11:8]=shift_reg[11:8];
+                 shift_reg=shift_reg<<1;
+                 end
+          end
+       end
+    end
+
+    always@(posedge clk) begin
+    if(count==9)  //移位结束 
+    begin
+        gw <= shift_reg[11:8];    //个位
+        sw <= shift_reg[15:12];   //十位
+    end
+    else
+    begin
+        gw <= gw;
+        sw <= sw;
+    end 
+    end
+
+    always@(posedge clk) begin
+    case(cnt_wz)   //决定哪一位数码管亮
+        3'd0: begin
+            if(zt == 0)
+                wz <= 8'b01111111;
+            else if(zt == 1 & shine == 1)
+                wz <= 8'b11111111;
+            else
+                wz <= 8'b01111111;
+           end
+        3'd1: begin
+            if(zt == 0)
+                wz <= 8'b10111111;
+            else if(zt == 1 & shine == 1)
+                wz <= 8'b11111111;
+            else
+                wz <= 8'b10111111;
+           end
+        3'd2: wz <= 8'b11011111;
+        3'd3: wz <= 8'b11101111;
+        3'd4: wz <= 8'b11110111;
+        3'd5: wz <= 8'b11111011;
+        3'd6: wz <= 8'b11111101;
+        3'd7: wz <= 8'b11111110;
+        default: wz <= 8'b11111111;
+    endcase
+    end
+
+    always@(posedge clk) begin
+    case(cnt_wz)    //数码管要要显示的数值
+    4'd0: num <= sw;  //饮料价格
+    4'd1: num <= gw;   
+    4'd2: num <= 12;  //12无意义，仅用于下面的判断
+    4'd3: num <= sw;
+    4'd4: num <= gw;
+    4'd5: num <= 12;   //本12同理上面
+    4'd6: num <= sw;
+    4'd7: num <= gw;
+    default: num <= 0;
+    endcase
+    end
+
+    always @(posedge clk) begin
+    if(num <= 9)
+        case(num)   //根据钱数决定输出的段码
+        4'd0: smg <= 8'b11111100;
+        4'd1: smg <= 8'b01100000;
+        4'd2: smg <= 8'b11011010;
+        4'd3: smg <= 8'b11110010;
+        4'd4: smg <= 8'b01100110;
+        4'd5: smg <= 8'b10110110;
+        4'd6: smg <= 8'b10111110;
+        4'd7: smg <= 8'b11100000;
+        4'd8: smg <= 8'b11111110;
+        4'd9: smg <= 8'b11110110;
+        default: smg <= 8'b00000000;
+        endcase
+    else
+        smg <= 8'b00000010;    //不同类型间的分隔符
+    end
+
+    assign seg_data0 = smg;    //段码输送
+    assign seg_data1 = smg;
+    assign seg_cs = wz;     //位选输送
+    assign led = light;    //LED输送
+endmodule
